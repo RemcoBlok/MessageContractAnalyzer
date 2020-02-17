@@ -152,3 +152,5 @@ and
     }
 
 Note that JsonMessageSerializer is from MassTransit. MassTransit generates a class definition at runtime for the message contract and maintains a cached mapping of message contracts to these runtime generated class definitions. JsonMessageSerializer uses these runtime generated class definitions for deserialization.
+
+I will be happy to transfer ownership of this repository to the MassTransit project.
