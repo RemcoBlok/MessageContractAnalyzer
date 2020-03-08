@@ -7,6 +7,21 @@ namespace MessageContractAnalyzer
 {
     public static class CommonExpressions
     {
+        public static bool HasArgumentAncestor(this AnonymousObjectCreationExpressionSyntax anonymousObject, out ArgumentSyntax argumentSyntax)
+        {
+            argumentSyntax = anonymousObject.Parent as ArgumentSyntax;
+            if (argumentSyntax == null)
+            {
+                if (anonymousObject.Parent is InitializerExpressionSyntax initializerExpressionSyntax &&
+                    initializerExpressionSyntax.Parent is ImplicitArrayCreationExpressionSyntax implicitArrayCreationExpressionSyntax)
+                {
+                    argumentSyntax = implicitArrayCreationExpressionSyntax.Parent as ArgumentSyntax;
+                }
+            }
+
+            return argumentSyntax != null;
+        }
+
         public static bool IsActivator(this ArgumentSyntax argumentSyntax, SemanticModel semanticModel, out ITypeSymbol typeArgument)
         {
             if (argumentSyntax != null &&

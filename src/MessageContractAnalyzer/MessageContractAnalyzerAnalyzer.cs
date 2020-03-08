@@ -58,17 +58,9 @@ namespace MessageContractAnalyzer
         private static void AnalyzeNode(SyntaxNodeAnalysisContext context)
         {
             var anonymousObject = (AnonymousObjectCreationExpressionSyntax)context.Node;
-            var argumentSyntax = anonymousObject.Parent as ArgumentSyntax;
-            if (argumentSyntax == null)
-            {
-                if (anonymousObject.Parent is InitializerExpressionSyntax initializerExpressionSyntax &&
-                    initializerExpressionSyntax.Parent is ImplicitArrayCreationExpressionSyntax implicitArrayCreationExpressionSyntax)
-                {
-                    argumentSyntax = implicitArrayCreationExpressionSyntax.Parent as ArgumentSyntax;
-                }
-            }
-
-            if (argumentSyntax.IsActivator(context.SemanticModel, out var typeArgument))
+            
+            if (anonymousObject.HasArgumentAncestor(out var argumentSyntax) &&
+                argumentSyntax.IsActivator(context.SemanticModel, out var typeArgument))
             {
                 if (typeArgument.HasMessageContract(out var messageContractType))
                 {

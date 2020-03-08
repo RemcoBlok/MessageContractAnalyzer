@@ -53,17 +53,8 @@ namespace MessageContractAnalyzer
             var root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
             var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
 
-            var argumentSyntax = anonymousObject.Parent as ArgumentSyntax;
-            if (argumentSyntax == null)
-            {
-                if (anonymousObject.Parent is InitializerExpressionSyntax initializerExpressionSyntax &&
-                    initializerExpressionSyntax.Parent is ImplicitArrayCreationExpressionSyntax implicitArrayCreationExpressionSyntax)
-                {
-                    argumentSyntax = implicitArrayCreationExpressionSyntax.Parent as ArgumentSyntax;
-                }
-            }
-
-            if (argumentSyntax.IsActivator(semanticModel, out var typeArgument) &&
+            if (anonymousObject.HasArgumentAncestor(out var argumentSyntax) &&
+                argumentSyntax.IsActivator(semanticModel, out var typeArgument) &&
                 typeArgument.HasMessageContract(out var messageContractType))
             {
                 var dictionary = new Dictionary<AnonymousObjectCreationExpressionSyntax, ITypeSymbol>();
