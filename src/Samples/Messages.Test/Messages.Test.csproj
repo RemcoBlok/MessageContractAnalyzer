@@ -21,8 +21,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Analyzer Include="..\MessageContractAnalyzer\bin\Debug\netstandard2.0\MessageContractAnalyzer.dll" Condition=" '$(Configuration)' == 'Debug' " />
-    <Analyzer Include="..\MessageContractAnalyzer\bin\Release\netstandard2.0\MessageContractAnalyzer.dll" Condition=" '$(Configuration)' == 'Release' " />
+    <Analyzer Include="..\..\MessageContractAnalyzer\bin\Debug\netstandard2.0\MessageContractAnalyzer.dll" Condition=" '$(Configuration)' == 'Debug' " />
+    <Analyzer Include="..\..\MessageContractAnalyzer\bin\Release\netstandard2.0\MessageContractAnalyzer.dll" Condition=" '$(Configuration)' == 'Release' " />
   </ItemGroup>
 
 </Project>
