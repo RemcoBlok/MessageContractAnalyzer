@@ -105,8 +105,8 @@ namespace MessageContractAnalyzer
                 return true;
             }
 
-            var messageContractProperties = GetMessageContractProperties(messageContractType);
-            var messageProperties = GetMessageProperties(messageType);
+            var messageContractProperties = messageContractType.GetMessageContractProperties();
+            var messageProperties = messageType.GetMessageProperties();
             var result = true;
 
             foreach (var messageProperty in messageProperties)
@@ -183,8 +183,8 @@ namespace MessageContractAnalyzer
 
         private static bool HasMissingProperties(ITypeSymbol messageType, ITypeSymbol messageContractType, string path, ICollection<string> missingProperties)
         {
-            var messageContractProperties = GetMessageContractProperties(messageContractType);
-            var messageProperties = GetMessageProperties(messageType);
+            var messageContractProperties = messageContractType.GetMessageContractProperties();
+            var messageProperties = messageType.GetMessageProperties();
             var result = false;
 
             foreach (var messageContractProperty in messageContractProperties)
@@ -224,26 +224,6 @@ namespace MessageContractAnalyzer
             }
 
             return result;
-        }
-
-        private static List<IPropertySymbol> GetMessageProperties(ITypeSymbol messageType)
-        {
-            return messageType.GetMembers().OfType<IPropertySymbol>().ToList();
-        }
-
-        private static List<IPropertySymbol> GetMessageContractProperties(ITypeSymbol messageContractType)
-        {
-            var messageContractTypes = new List<ITypeSymbol> { messageContractType };
-            messageContractTypes.AddRange(messageContractType.AllInterfaces);
-
-            return messageContractTypes
-                .SelectMany(i => i.GetMembers()
-                    .OfType<IPropertySymbol>()
-                    .Where(p => !p.GetAttributes()
-                        .Any(a => a.AttributeClass.Name == "ActivatorInitializedAttribute")
-                    )
-                )
-                .ToList();
         }
 
         private static string Append(string path, string propertyName)

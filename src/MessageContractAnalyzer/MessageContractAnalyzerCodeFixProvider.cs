@@ -83,7 +83,7 @@ namespace MessageContractAnalyzer
         private static void FindAnonymousTypesWithMessageContractsInTree(IDictionary<AnonymousObjectCreationExpressionSyntax, ITypeSymbol> dictionary,
             AnonymousObjectCreationExpressionSyntax anonymousObject, ITypeSymbol messageContractType)
         {
-            var messageContractProperties = GetMessageContractProperties(messageContractType);
+            var messageContractProperties = messageContractType.GetMessageContractProperties();
 
             foreach (var initializer in anonymousObject.Initializers)
             {
@@ -134,22 +134,7 @@ namespace MessageContractAnalyzer
 
             return name;
         }
-
-        private static List<IPropertySymbol> GetMessageContractProperties(ITypeSymbol messageContractType)
-        {
-            var messageContractTypes = new List<ITypeSymbol> { messageContractType };
-            messageContractTypes.AddRange(messageContractType.AllInterfaces);
-
-            return messageContractTypes
-                .SelectMany(i => i.GetMembers()
-                    .OfType<IPropertySymbol>()
-                    .Where(p => !p.GetAttributes()
-                        .Any(a => a.AttributeClass.Name == "ActivatorInitializedAttribute")
-                    )
-                )
-                .ToList();
-        }
-
+        
         private static SyntaxNode AddMissingProperties(SyntaxNode root, IDictionary<AnonymousObjectCreationExpressionSyntax, ITypeSymbol> dictionary)
         {
             var newRoot = root.TrackNodes(dictionary.Keys);
@@ -169,7 +154,7 @@ namespace MessageContractAnalyzer
         {
             var newRoot = root;
 
-            var messageContractProperties = GetMessageContractProperties(messageContractType);
+            var messageContractProperties = messageContractType.GetMessageContractProperties();
 
             var propertiesToAdd = new List<AnonymousObjectMemberDeclaratorSyntax>();
             foreach (var messageContractProperty in messageContractProperties)
@@ -197,7 +182,7 @@ namespace MessageContractAnalyzer
 
         private static AnonymousObjectMemberDeclaratorSyntax[] CreateProperties(ITypeSymbol messageContractType)
         {
-            var messageContractProperties = GetMessageContractProperties(messageContractType);
+            var messageContractProperties = messageContractType.GetMessageContractProperties();
 
             var propertiesToAdd = new List<AnonymousObjectMemberDeclaratorSyntax>();
             foreach (var messageContractProperty in messageContractProperties)

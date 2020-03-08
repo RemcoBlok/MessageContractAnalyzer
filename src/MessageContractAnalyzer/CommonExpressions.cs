@@ -1,5 +1,6 @@
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace MessageContractAnalyzer
@@ -139,6 +140,26 @@ namespace MessageContractAnalyzer
 
             typeArgument = null;
             return false;
+        }
+
+        public static IReadOnlyList<IPropertySymbol> GetMessageProperties(this ITypeSymbol messageType)
+        {
+            return messageType.GetMembers().OfType<IPropertySymbol>().ToList();
+        }
+
+        public static IReadOnlyList<IPropertySymbol> GetMessageContractProperties(this ITypeSymbol messageContractType)
+        {
+            var messageContractTypes = new List<ITypeSymbol> { messageContractType };
+            messageContractTypes.AddRange(messageContractType.AllInterfaces);
+
+            return messageContractTypes
+                .SelectMany(i => i.GetMembers()
+                    .OfType<IPropertySymbol>()
+                    .Where(p => !p.GetAttributes()
+                        .Any(a => a.AttributeClass.Name == "ActivatorInitializedAttribute")
+                    )
+                )
+                .ToList();
         }
     }
 }
