@@ -346,6 +346,45 @@ namespace ConsoleApplication1
             VerifyCSharpDiagnostic(test);
         }
 
+
+        [TestMethod]
+        public void WhenTypeNotValidStructure_ShouldHaveDiagnostic()
+        {
+            var test = Usings + Activator + @"
+namespace ConsoleApplication1
+{
+    public class Notification
+    {
+        public Guid StreamId { get; set; }
+    }
+
+    class Program
+    {
+        static void Main()
+        {
+            var notification = Activator.CreateInstance<Notification>(new
+            {
+                StreamId = Guid.Empty
+            });
+        }
+    }
+}
+";
+            var expected = new DiagnosticResult
+            {
+                Id = "MCA0002",
+                Message = "Message contract 'Notification' does not have a valid structure",
+                Severity = DiagnosticSeverity.Error,
+                Locations =
+                    new[] {
+                            new DiagnosticResultLocation("Test0.cs", 44, 71)
+                        }
+            };
+
+            VerifyCSharpDiagnostic(test, expected);
+        }
+
+
         [TestMethod]
         public void WhenTypesAreStructurallyIncompatibleAndNoMissingProperties_ShouldHaveDiagnostic()
         {
@@ -421,8 +460,6 @@ namespace ConsoleApplication1
             };
 
             VerifyCSharpDiagnostic(test, expected);
-
-            VerifyCSharpFix(test, test);
         }
 
         [TestMethod]
@@ -501,8 +538,6 @@ namespace ConsoleApplication1
             };
 
             VerifyCSharpDiagnostic(test, expected);
-
-            VerifyCSharpFix(test, test);
         }
 
         [TestMethod]
@@ -591,8 +626,6 @@ namespace ConsoleApplication1
             };
 
             VerifyCSharpDiagnostic(test, expected1, expected2);
-
-            VerifyCSharpFix(test, test);
         }
 
         [TestMethod]
@@ -683,8 +716,6 @@ namespace ConsoleApplication1
             };
 
             VerifyCSharpDiagnostic(test, expected1, expected2);
-
-            VerifyCSharpFix(test, test);
         }
 
         [TestMethod]
@@ -773,8 +804,6 @@ namespace ConsoleApplication1
             };
 
             VerifyCSharpDiagnostic(test, expected1, expected2);
-
-            VerifyCSharpFix(test, test);
         }
 
         [TestMethod]
@@ -865,8 +894,6 @@ namespace ConsoleApplication1
             };
 
             VerifyCSharpDiagnostic(test, expected1, expected2);
-
-            VerifyCSharpFix(test, test);
         }
 
         [TestMethod]
@@ -955,8 +982,6 @@ namespace ConsoleApplication1
             };
 
             VerifyCSharpDiagnostic(test, expected1, expected2);
-
-            VerifyCSharpFix(test, test);
         }
 
         [TestMethod]
@@ -1047,8 +1072,6 @@ namespace ConsoleApplication1
             };
 
             VerifyCSharpDiagnostic(test, expected1, expected2);
-
-            VerifyCSharpFix(test, test);
         }
 
         [TestMethod]
@@ -1126,8 +1149,6 @@ namespace ConsoleApplication1
             };
 
             VerifyCSharpDiagnostic(test, expected);
-
-            VerifyCSharpFix(test, test);
         }
 
         [TestMethod]
@@ -1206,8 +1227,6 @@ namespace ConsoleApplication1
             };
 
             VerifyCSharpDiagnostic(test, expected);
-
-            VerifyCSharpFix(test, test);
         }
 
         [TestMethod]
@@ -1285,8 +1304,6 @@ namespace ConsoleApplication1
             };
 
             VerifyCSharpDiagnostic(test, expected);
-
-            VerifyCSharpFix(test, test);
         }
 
         [TestMethod]
@@ -1365,8 +1382,6 @@ namespace ConsoleApplication1
             };
 
             VerifyCSharpDiagnostic(test, expected);
-
-            VerifyCSharpFix(test, test);
         }
 
         [TestMethod]
@@ -1444,8 +1459,6 @@ namespace ConsoleApplication1
             };
 
             VerifyCSharpDiagnostic(test, expected);
-
-            VerifyCSharpFix(test, test);
         }
 
         [TestMethod]
@@ -1525,9 +1538,85 @@ namespace ConsoleApplication1
             };
 
             VerifyCSharpDiagnostic(test, expected);
-
-            VerifyCSharpFix(test, test);
         }
+
+        [TestMethod]
+        public void WhenCommandTypesAreStructurallyIncompatibleAtDifferentNodesAndNoMissingProperties_ShouldHaveDiagnostic()
+        {
+            var test = Usings + Activator + MessageContracts + @"
+namespace ConsoleApplication1
+{
+    class Program
+    {
+        static void Main()
+        {
+            var billingAddress = Activator.CreateInstance<IAddress>(new
+            {
+                Street = string.Empty,
+                Place = string.Empty
+            });
+
+            var identifications = Activator.CreateInstance<IReadOnlyList<IIdentification>>(new[]
+            {
+                new
+                {
+                    Type = string.Empty,
+                    IssuingCountry = string.Empty,
+                    Number = string.Empty
+                },
+                new
+                {
+                    Type = string.Empty,
+                    IssuingCountry = string.Empty,
+                    Number = string.Empty
+                }
+            });
+
+            var command = Activator.CreateCommand<ICreateCommand>(new
+            {
+                StreamId = Guid.Empty,
+                Name = 0,
+                BillingAddress = billingAddress,
+                DeliveryAddress = new
+                {
+                    Street = string.Empty,
+                    Place = 0
+                },
+                Identifications = identifications,
+                Documents = new[]
+                {
+                    new
+                    {
+                        Type = string.Empty,
+                        IssuingCountry = string.Empty,
+                        Number = 0
+                    },
+                    new
+                    {
+                        Type = string.Empty,
+                        IssuingCountry = string.Empty,
+                        Number = 0
+                    }
+                }
+            });
+        }
+    }
+}
+";
+            var expected = new DiagnosticResult
+            {
+                Id = "MCA0001",
+                Message = "Anonymous type does not map to message contract 'ICreateCommand'. The following properties of the anonymous type are incompatible: Name, DeliveryAddress.Place, Documents.Number",
+                Severity = DiagnosticSeverity.Error,
+                Locations =
+                    new[] {
+                            new DiagnosticResultLocation("Test0.cs", 93, 67)
+                        }
+            };
+
+            VerifyCSharpDiagnostic(test, expected);
+        }
+
 
         [TestMethod]
         public void WhenTypesAreStructurallyCompatibleAndMissingProperty_ShouldHaveDiagnosticAndCodeFix()
@@ -2968,6 +3057,7 @@ Number = default(string) }
             VerifyCSharpFix(test, fixtest);
         }
 
+
         [TestMethod]
         public void WhenAnonymousTypeUsingInferredMemberNamesAreStructurallyCompatibleAndNoMissingProperties_ShouldHaveNoDiagnostics()
         {
@@ -3038,6 +3128,88 @@ namespace ConsoleApplication1
 ";
 
             VerifyCSharpDiagnostic(test);
+        }
+
+        [TestMethod]
+        public void WhenAnonymousTypeUsingInferredMemberNamesAreStructurallyIncompatibleAndNoMissingProperties_ShouldHaveDiagnostic()
+        {
+            var test = Usings + Activator + MessageContracts + @"
+namespace ConsoleApplication1
+{
+    using System.Linq;
+
+    public class AddressModel
+    {
+        public string Street { get; }
+        public string Place { get; }
+    }
+
+    public class IdentificationModel
+    {
+        public string Type { get; }
+        public string IssuingCountry { get; }
+        public int Number { get; }
+    }
+
+    public class CreateRequest
+    {
+        public Guid StreamId { get; }
+        public string Name { get; }
+        public AddressModel BillingAddress { get; } = new AddressModel();
+        public AddressModel DeliveryAddress { get; } = new AddressModel();
+        public IReadOnlyList<IdentificationModel> Identifications { get; } = new List<IdentificationModel>();
+        public IReadOnlyList<IdentificationModel> Documents { get; } = new List<IdentificationModel>();
+    }
+
+    class Program
+    {
+        static void Main()
+        {
+            var request = new CreateRequest();
+
+            var command = Activator.CreateCommand<ICreateCommand>(new
+            {
+                request.StreamId,
+                request.Name,
+                BillingAddress = new
+                {
+                    request.BillingAddress.Street,
+                    request.BillingAddress.Place
+                },
+                DeliveryAddress = new
+                {
+                    request.DeliveryAddress.Street,
+                    request.DeliveryAddress.Place
+                },
+                Identifications = request.Identifications.Select(i => new
+                {
+                    i.Type,
+                    i.IssuingCountry,
+                    i.Number
+                }).ToList(),
+                Documents = request.Documents.Select(d => new
+                {
+                    d.Type,
+                    d.IssuingCountry,
+                    d.Number
+                }).ToList()
+            });
+        }
+    }
+}
+";
+            var expected = new DiagnosticResult
+            {
+                Id = "MCA0001",
+                Message = "Anonymous type does not map to message contract 'ICreateCommand'. The following properties of the anonymous type are incompatible: Identifications.Number, Documents.Number",
+                Severity = DiagnosticSeverity.Error,
+                Locations =
+                    new[] {
+                            new DiagnosticResultLocation("Test0.cs", 98, 67)
+                        }
+            };
+
+            VerifyCSharpDiagnostic(test, expected);
         }
 
         [TestMethod]
@@ -3189,6 +3361,7 @@ namespace ConsoleApplication1
             VerifyCSharpFix(test, fixtest);
         }
 
+
         [TestMethod]
         public void WhenSimpleArrayTypesAreStructurallyCompatibleAndNoMissingProperties_ShouldHaveNoDiagnostics()
         {
@@ -3263,8 +3436,6 @@ namespace ConsoleApplication1
             };
 
             VerifyCSharpDiagnostic(test, expected);
-
-            VerifyCSharpFix(test, test);
         }
 
         [TestMethod]
@@ -3337,6 +3508,7 @@ namespace ConsoleApplication1
 ";
             VerifyCSharpFix(test, fixtest);
         }
+
 
         [TestMethod]
         public void WhenMessageContractHasNamespaceAreStructurallyCompatibleAndNoMissingProperties_ShouldHaveNoDiagnostics()
@@ -3412,8 +3584,6 @@ namespace ConsoleApplication1
             };
 
             VerifyCSharpDiagnostic(test, expected);
-
-            VerifyCSharpFix(test, test);
         }
 
         [TestMethod]
@@ -3487,6 +3657,7 @@ namespace ConsoleApplication1
             VerifyCSharpFix(test, fixtest);
         }
 
+
         [TestMethod]
         public void WhenMessageContractHasNullableAreStructurallyCompatibleAndMissingProperty_ShouldHaveDiagnosticAndCodeFix()
         {
@@ -3553,6 +3724,7 @@ namespace ConsoleApplication1
 ";
             VerifyCSharpFix(test, fixtest);
         }
+
 
         [TestMethod]
         public void WhenActivatingGenericContractAreStructurallyCompatibleAndNoMissingProperties_ShouldHaveNoDiagnostics()
@@ -3634,8 +3806,6 @@ namespace ConsoleApplication1
             };
 
             VerifyCSharpDiagnostic(test, expected);
-
-            VerifyCSharpFix(test, test);
         }
 
         [TestMethod]

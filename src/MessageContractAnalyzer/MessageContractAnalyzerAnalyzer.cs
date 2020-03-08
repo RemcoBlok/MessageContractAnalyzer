@@ -57,23 +57,23 @@ namespace MessageContractAnalyzer
 
         private static void AnalyzeNode(SyntaxNodeAnalysisContext context)
         {
-            var anonymousObjectCreationExpressionSyntax = (AnonymousObjectCreationExpressionSyntax)context.Node;
-            var argumentSyntax = anonymousObjectCreationExpressionSyntax.Parent as ArgumentSyntax;
+            var anonymousObject = (AnonymousObjectCreationExpressionSyntax)context.Node;
+            var argumentSyntax = anonymousObject.Parent as ArgumentSyntax;
             if (argumentSyntax == null)
             {
-                if (anonymousObjectCreationExpressionSyntax.Parent is InitializerExpressionSyntax initializerExpressionSyntax &&
+                if (anonymousObject.Parent is InitializerExpressionSyntax initializerExpressionSyntax &&
                     initializerExpressionSyntax.Parent is ImplicitArrayCreationExpressionSyntax implicitArrayCreationExpressionSyntax)
                 {
                     argumentSyntax = implicitArrayCreationExpressionSyntax.Parent as ArgumentSyntax;
                 }
             }
 
-            if (IsActivator(argumentSyntax, context.SemanticModel, out var typeArgument))
+            if (argumentSyntax.IsActivator(context.SemanticModel, out var typeArgument))
             {
-                var anonymousType = context.SemanticModel.GetTypeInfo(anonymousObjectCreationExpressionSyntax).Type;
-
-                if (HasMessageContract(typeArgument, context.SemanticModel, out var messageContractType))
+                if (typeArgument.HasMessageContract(out var messageContractType))
                 {
+                    var anonymousType = context.SemanticModel.GetTypeInfo(anonymousObject).Type;
+
                     var incompatibleProperties = new List<string>();
                     if (!TypesAreStructurallyCompatible(anonymousType, messageContractType, string.Empty, incompatibleProperties))
                     {
@@ -92,151 +92,10 @@ namespace MessageContractAnalyzer
                 }
                 else
                 {
-                    var diagnostic = Diagnostic.Create(ValidMessageContractStructureRule, anonymousType.Locations[0], typeArgument.GetText());
+                    var diagnostic = Diagnostic.Create(ValidMessageContractStructureRule, context.Node.GetLocation(), typeArgument.Name);
                     context.ReportDiagnostic(diagnostic);
                 }
             }
-        }
-
-        private static bool HasMessageContract(TypeSyntax typeArgument, SemanticModel semanticModel, out ITypeSymbol messageContractType)
-        {
-            if (typeArgument is IdentifierNameSyntax identifierNameSyntax)
-            {
-                var identifierType = semanticModel.GetTypeInfo(identifierNameSyntax).Type;
-                if (identifierType.TypeKind == TypeKind.Interface)
-                {
-                    messageContractType = identifierType;
-                    return true;
-                }
-
-                if (identifierType.TypeKind == TypeKind.TypeParameter &&
-                    identifierType is ITypeParameterSymbol typeParameter &&
-                    typeParameter.ConstraintTypes.Length == 1 &&
-                    typeParameter.ConstraintTypes[0].TypeKind == TypeKind.Interface)
-                {
-                    messageContractType = typeParameter.ConstraintTypes[0];
-                    return true;
-                }
-            }
-            else if (typeArgument is GenericNameSyntax genericNameSyntax)
-            {
-                var genericType = semanticModel.GetTypeInfo(genericNameSyntax).Type;
-
-                if (IsImmutableArray(genericType, out messageContractType) ||
-                    IsReadOnlyList(genericType, out messageContractType) ||
-                    IsList(genericType, out messageContractType))
-                {
-                    if (messageContractType.TypeKind == TypeKind.Interface)
-                    {
-                        return true;
-                    }
-                }
-            }
-            else if (typeArgument is ArrayTypeSyntax arrayTypeSyntax)
-            {
-                messageContractType = semanticModel.GetTypeInfo(arrayTypeSyntax.ElementType).Type;
-                if (messageContractType.TypeKind == TypeKind.Interface)
-                {
-                    return true;
-                }
-            }
-            else if (typeArgument is QualifiedNameSyntax qualifiedNameSyntax)
-            {
-                messageContractType = semanticModel.GetTypeInfo(qualifiedNameSyntax).Type;
-                if (messageContractType.TypeKind == TypeKind.Interface)
-                {
-                    return true;
-                }
-            }
-
-            messageContractType = null;
-            return false;
-        }
-
-        private static bool IsActivator(ArgumentSyntax argumentSyntax, SemanticModel semanticModel, out TypeSyntax typeArgument)
-        {
-            if (argumentSyntax != null &&
-                argumentSyntax.Parent is ArgumentListSyntax argumentListSyntax &&
-                argumentListSyntax.Parent is InvocationExpressionSyntax invocationExpressionSyntax &&
-                invocationExpressionSyntax.Expression is MemberAccessExpressionSyntax memberAccessExpressionSyntax &&
-                memberAccessExpressionSyntax.Name is GenericNameSyntax genericNameSyntax &&
-                genericNameSyntax.TypeArgumentList.Arguments.Count == 1 &&
-                semanticModel.GetSymbolInfo(memberAccessExpressionSyntax).Symbol is IMethodSymbol method &&
-                method.TypeArguments.Length == 1 &&
-                SymbolEqualityComparer.Default.Equals(method.ReturnType, method.TypeArguments[0]) &&
-                method.Parameters.Length == 1 && method.Parameters[0].Type.SpecialType == SpecialType.System_Object &&
-                method.GetAttributes().Any(a => a.AttributeClass.Name == "ActivatorAttribute"))
-            {
-                typeArgument = genericNameSyntax.TypeArgumentList.Arguments[0];
-                return true;
-            }
-
-            typeArgument = null;
-            return false;
-        }
-
-        private static bool IsImmutableArray(ITypeSymbol type, out ITypeSymbol typeArgument)
-        {
-            if (type.TypeKind == TypeKind.Struct &&
-                type.Name == "ImmutableArray" &&
-                type.ContainingNamespace.ToString() == "System.Collections.Immutable" &&
-                type is INamedTypeSymbol immutableArrayType &&
-                immutableArrayType.IsGenericType &&
-                immutableArrayType.TypeArguments.Length == 1)
-            {
-                typeArgument = immutableArrayType.TypeArguments[0];
-                return true;
-            }
-
-            typeArgument = null;
-            return false;
-        }
-
-        private static bool IsReadOnlyList(ITypeSymbol type, out ITypeSymbol typeArgument)
-        {
-            if (type.TypeKind == TypeKind.Interface &&
-                type.Name == "IReadOnlyList" &&
-                type.ContainingNamespace.ToString() == "System.Collections.Generic" &&
-                type is INamedTypeSymbol readOnlyListType &&
-                readOnlyListType.IsGenericType &&
-                readOnlyListType.TypeArguments.Length == 1)
-            {
-                typeArgument = readOnlyListType.TypeArguments[0];
-                return true;
-            }
-
-            typeArgument = null;
-            return false;
-        }
-
-        private static bool IsList(ITypeSymbol type, out ITypeSymbol typeArgument)
-        {
-            if (type.TypeKind == TypeKind.Class &&
-                type.Name == "List" &&
-                type.ContainingNamespace.ToString() == "System.Collections.Generic" &&
-                type is INamedTypeSymbol listType &&
-                listType.IsGenericType &&
-                listType.TypeArguments.Length == 1)
-            {
-                typeArgument = listType.TypeArguments[0];
-                return true;
-            }
-
-            typeArgument = null;
-            return false;
-        }
-
-        private static bool IsArray(ITypeSymbol type, out ITypeSymbol elementType)
-        {
-            if (type.TypeKind == TypeKind.Array &&
-                type is IArrayTypeSymbol arrayTypeSymbol)
-            {
-                elementType = arrayTypeSymbol.ElementType;
-                return true;
-            }
-
-            elementType = null;
-            return false;
         }
 
         private static bool TypesAreStructurallyCompatible(ITypeSymbol messageType, ITypeSymbol messageContractType, string path, ICollection<string> incompatibleProperties)
@@ -247,7 +106,8 @@ namespace MessageContractAnalyzer
             }
 
             var messageContractProperties = GetMessageContractProperties(messageContractType);
-            var messageProperties = messageType.GetMembers().OfType<IPropertySymbol>().ToList();
+            var messageProperties = GetMessageProperties(messageType);
+            var result = true;
 
             foreach (var messageProperty in messageProperties)
             {
@@ -257,10 +117,9 @@ namespace MessageContractAnalyzer
                 if (messageContractProperty == null)
                 {
                     incompatibleProperties.Add(Append(path, messageProperty.Name));
-                    return false;
+                    result = false;
                 }
-
-                if (!SymbolEqualityComparer.Default.Equals(messageProperty.Type, messageContractProperty.Type))
+                else if (!SymbolEqualityComparer.Default.Equals(messageProperty.Type, messageContractProperty.Type))
                 {
                     if (messageProperty.Type.IsAnonymousType)
                     {
@@ -269,106 +128,107 @@ namespace MessageContractAnalyzer
                             if (!TypesAreStructurallyCompatible(messageProperty.Type, messageContractProperty.Type,
                                 Append(path, messageProperty.Name), incompatibleProperties))
                             {
-                                return false;
+                                result = false;
                             }
                         }
                         else
                         {
                             incompatibleProperties.Add(Append(path, messageProperty.Name));
-                            return false;
+                            result = false;
                         }
                     }
-                    else if (IsImmutableArray(messageProperty.Type, out var messagePropertyTypeArgument) ||
-                             IsReadOnlyList(messageProperty.Type, out messagePropertyTypeArgument) ||
-                             IsList(messageProperty.Type, out messagePropertyTypeArgument) ||
-                             IsArray(messageProperty.Type, out messagePropertyTypeArgument))
+                    else if (messageProperty.Type.IsImmutableArray(out var messagePropertyTypeArgument) ||
+                             messageProperty.Type.IsReadOnlyList(out messagePropertyTypeArgument) ||
+                             messageProperty.Type.IsArray(out messagePropertyTypeArgument) ||
+                             messageProperty.Type.IsList(out messagePropertyTypeArgument))
                     {
-                        if (IsImmutableArray(messageContractProperty.Type, out var messageContractPropertyTypeArgument) ||
-                            IsReadOnlyList(messageContractProperty.Type, out messageContractPropertyTypeArgument))
+                        if (messageContractProperty.Type.IsImmutableArray(out var messageContractPropertyTypeArgument) ||
+                            messageContractProperty.Type.IsReadOnlyList(out messageContractPropertyTypeArgument) ||
+                            messageContractProperty.Type.IsArray(out messageContractPropertyTypeArgument))
                         {
                             if (!SymbolEqualityComparer.Default.Equals(messagePropertyTypeArgument, messageContractPropertyTypeArgument))
                             {
-                                if (messageContractPropertyTypeArgument.TypeKind == TypeKind.Interface)
+                                if (messagePropertyTypeArgument.IsAnonymousType &&
+                                    messageContractPropertyTypeArgument.TypeKind == TypeKind.Interface)
                                 {
                                     if (!TypesAreStructurallyCompatible(messagePropertyTypeArgument, messageContractPropertyTypeArgument,
                                         Append(path, messageProperty.Name), incompatibleProperties))
                                     {
-                                        return false;
+                                        result = false;
                                     }
                                 }
                                 else
                                 {
                                     incompatibleProperties.Add(Append(path, messageProperty.Name));
-                                    return false;
+                                    result = false;
                                 }
                             }
                         }
                         else
                         {
                             incompatibleProperties.Add(Append(path, messageProperty.Name));
-                            return false;
+                            result = false;
                         }
                     }
                     else
                     {
                         incompatibleProperties.Add(Append(path, messageProperty.Name));
-                        return false;
+                        result = false;
                     }
                 }
             }
 
-            return true;
+            return result;
         }
 
         private static bool HasMissingProperties(ITypeSymbol messageType, ITypeSymbol messageContractType, string path, ICollection<string> missingProperties)
         {
             var messageContractProperties = GetMessageContractProperties(messageContractType);
-            var messageProperties = messageType.GetMembers().OfType<IPropertySymbol>().ToList();
+            var messageProperties = GetMessageProperties(messageType);
             var result = false;
 
             foreach (var messageContractProperty in messageContractProperties)
             {
-                var messageProperty =
-                    messageProperties.FirstOrDefault(m => m.Name == messageContractProperty.Name);
+                var messageProperty = messageProperties.FirstOrDefault(m => m.Name == messageContractProperty.Name);
 
                 if (messageProperty == null)
                 {
                     missingProperties.Add(Append(path, messageContractProperty.Name));
                     result = true;
                 }
-                else if (IsImmutableArray(messageContractProperty.Type, out var messageContractPropertyTypeArgument) ||
-                    IsReadOnlyList(messageContractProperty.Type, out messageContractPropertyTypeArgument))
+                else if (messageContractProperty.Type.IsImmutableArray(out var messageContractPropertyTypeArgument) ||
+                    messageContractProperty.Type.IsReadOnlyList(out messageContractPropertyTypeArgument) ||
+                    messageContractProperty.Type.IsArray(out messageContractPropertyTypeArgument))
                 {
-                    if (messageContractPropertyTypeArgument.TypeKind == TypeKind.Interface)
+                    if (messageProperty.Type.IsImmutableArray(out var messagePropertyTypeArgument) ||
+                        messageProperty.Type.IsReadOnlyList(out messagePropertyTypeArgument) ||
+                        messageProperty.Type.IsArray(out messagePropertyTypeArgument) ||
+                        messageProperty.Type.IsList(out messagePropertyTypeArgument))
                     {
-                        if (IsImmutableArray(messageProperty.Type, out var messagePropertyTypeArgument) ||
-                            IsReadOnlyList(messageProperty.Type, out messagePropertyTypeArgument) ||
-                            IsArray(messageProperty.Type, out messagePropertyTypeArgument))
-                        {
-                            var hasMissingProperties = HasMissingProperties(messagePropertyTypeArgument, messageContractPropertyTypeArgument,
-                                Append(path, messageContractProperty.Name), missingProperties);
-                            if (hasMissingProperties)
-                            {
-                                result = true;
-                            }
-                        }
-                    }
-                }
-                else if (messageContractProperty.Type.TypeKind == TypeKind.Interface)
-                {
-                    if (messageProperty.Type.IsAnonymousType)
-                    {
-                        var hasMissingProperties = HasMissingProperties(messageProperty.Type, messageContractProperty.Type,
-                            Append(path, messageContractProperty.Name), missingProperties);
-                        if (hasMissingProperties)
+                        if (messageContractPropertyTypeArgument.TypeKind == TypeKind.Interface &&
+                            messagePropertyTypeArgument.IsAnonymousType &&
+                            HasMissingProperties(messagePropertyTypeArgument, messageContractPropertyTypeArgument,
+                            Append(path, messageContractProperty.Name), missingProperties))
                         {
                             result = true;
                         }
                     }
                 }
+                else if (messageContractProperty.Type.TypeKind == TypeKind.Interface &&
+                    messageProperty.Type.IsAnonymousType &&
+                    HasMissingProperties(messageProperty.Type, messageContractProperty.Type,
+                    Append(path, messageContractProperty.Name), missingProperties))
+                {
+                    result = true;
+                }
             }
 
             return result;
+        }
+
+        private static List<IPropertySymbol> GetMessageProperties(ITypeSymbol messageType)
+        {
+            return messageType.GetMembers().OfType<IPropertySymbol>().ToList();
         }
 
         private static List<IPropertySymbol> GetMessageContractProperties(ITypeSymbol messageContractType)
