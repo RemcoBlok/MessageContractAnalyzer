@@ -43,18 +43,12 @@ namespace MessageContractAnalyzer
             return false;
         }
 
-
         public static bool HasMessageContract(this ITypeSymbol typeArgument, out ITypeSymbol messageContractType)
         {
-            if (IsImmutableArray(typeArgument, out messageContractType) ||
-                IsReadOnlyList(typeArgument, out messageContractType) ||
-                IsList(typeArgument, out messageContractType) ||
-                IsArray(typeArgument, out messageContractType))
+            if (typeArgument.IsValidMessageEnumerable(out messageContractType) &&
+                messageContractType.TypeKind == TypeKind.Interface)
             {
-                if (messageContractType.TypeKind == TypeKind.Interface)
-                {
-                    return true;
-                }
+                return true;
             }
 
             if (typeArgument.TypeKind == TypeKind.Interface)
@@ -155,6 +149,21 @@ namespace MessageContractAnalyzer
 
             typeArgument = null;
             return false;
+        }
+
+        public static bool IsValidMessageEnumerable(this ITypeSymbol type, out ITypeSymbol typeArgument)
+        {
+            return type.IsImmutableArray(out typeArgument) ||
+                type.IsReadOnlyList(out typeArgument) ||
+                type.IsArray(out typeArgument) ||
+                type.IsList(out typeArgument);
+        }
+
+        public static bool IsValidMessageContractEnumerable(this ITypeSymbol type, out ITypeSymbol typeArgument)
+        {
+            return type.IsImmutableArray(out typeArgument) ||
+                type.IsReadOnlyList(out typeArgument) ||
+                type.IsArray(out typeArgument);
         }
 
         public static IReadOnlyList<IPropertySymbol> GetMessageProperties(this ITypeSymbol messageType)

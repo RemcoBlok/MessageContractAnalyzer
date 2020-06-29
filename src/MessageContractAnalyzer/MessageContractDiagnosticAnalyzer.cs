@@ -10,7 +10,7 @@ using Microsoft.CodeAnalysis.Diagnostics;
 namespace MessageContractAnalyzer
 {
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
-    public class MessageContractAnalyzerAnalyzer : DiagnosticAnalyzer
+    public class MessageContractDiagnosticAnalyzer : DiagnosticAnalyzer
     {
         public const string StructurallyCompatibleRuleId = "MCA0001";
         public const string ValidMessageContractStructureRuleId = "MCA0002";
@@ -50,8 +50,6 @@ namespace MessageContractAnalyzer
 
             context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
             context.EnableConcurrentExecution();
-            // TODO: Consider registering other actions that act on syntax instead of or in addition to symbols
-            // See https://github.com/dotnet/roslyn/blob/master/docs/analyzers/Analyzer%20Actions%20Semantics.md for more information
             context.RegisterSyntaxNodeAction(AnalyzeNode, SyntaxKind.AnonymousObjectCreationExpression);
         }
 
@@ -90,7 +88,8 @@ namespace MessageContractAnalyzer
             }
         }
 
-        private static bool TypesAreStructurallyCompatible(ITypeSymbol messageType, ITypeSymbol messageContractType, string path, ICollection<string> incompatibleProperties)
+        private static bool TypesAreStructurallyCompatible(ITypeSymbol messageType, ITypeSymbol messageContractType,
+            string path, ICollection<string> incompatibleProperties)
         {
             if (SymbolEqualityComparer.Default.Equals(messageType, messageContractType))
             {
@@ -99,123 +98,190 @@ namespace MessageContractAnalyzer
 
             var messageContractProperties = messageContractType.GetMessageContractProperties();
             var messageProperties = messageType.GetMessageProperties();
-            var result = true;
 
+            var result = true;
             foreach (var messageProperty in messageProperties)
             {
                 var messageContractProperty =
                     messageContractProperties.FirstOrDefault(m => m.Name == messageProperty.Name);
 
+                var propertyPath = Append(path, messageProperty.Name);
+
                 if (messageContractProperty == null)
                 {
-                    incompatibleProperties.Add(Append(path, messageProperty.Name));
+                    incompatibleProperties.Add(propertyPath);
                     result = false;
                 }
-                else if (!SymbolEqualityComparer.Default.Equals(messageProperty.Type, messageContractProperty.Type))
+                else if (!PropertyTypesAreStructurallyCompatible(messageProperty, messageContractProperty, propertyPath, incompatibleProperties))
                 {
-                    if (messageProperty.Type.IsAnonymousType)
-                    {
-                        if (messageContractProperty.Type.TypeKind == TypeKind.Interface)
-                        {
-                            if (!TypesAreStructurallyCompatible(messageProperty.Type, messageContractProperty.Type,
-                                Append(path, messageProperty.Name), incompatibleProperties))
-                            {
-                                result = false;
-                            }
-                        }
-                        else
-                        {
-                            incompatibleProperties.Add(Append(path, messageProperty.Name));
-                            result = false;
-                        }
-                    }
-                    else if (messageProperty.Type.IsImmutableArray(out var messagePropertyTypeArgument) ||
-                             messageProperty.Type.IsReadOnlyList(out messagePropertyTypeArgument) ||
-                             messageProperty.Type.IsArray(out messagePropertyTypeArgument) ||
-                             messageProperty.Type.IsList(out messagePropertyTypeArgument))
-                    {
-                        if (messageContractProperty.Type.IsImmutableArray(out var messageContractPropertyTypeArgument) ||
-                            messageContractProperty.Type.IsReadOnlyList(out messageContractPropertyTypeArgument) ||
-                            messageContractProperty.Type.IsArray(out messageContractPropertyTypeArgument))
-                        {
-                            if (!SymbolEqualityComparer.Default.Equals(messagePropertyTypeArgument, messageContractPropertyTypeArgument))
-                            {
-                                if (messagePropertyTypeArgument.IsAnonymousType &&
-                                    messageContractPropertyTypeArgument.TypeKind == TypeKind.Interface)
-                                {
-                                    if (!TypesAreStructurallyCompatible(messagePropertyTypeArgument, messageContractPropertyTypeArgument,
-                                        Append(path, messageProperty.Name), incompatibleProperties))
-                                    {
-                                        result = false;
-                                    }
-                                }
-                                else
-                                {
-                                    incompatibleProperties.Add(Append(path, messageProperty.Name));
-                                    result = false;
-                                }
-                            }
-                        }
-                        else
-                        {
-                            incompatibleProperties.Add(Append(path, messageProperty.Name));
-                            result = false;
-                        }
-                    }
-                    else
-                    {
-                        incompatibleProperties.Add(Append(path, messageProperty.Name));
-                        result = false;
-                    }
+                    result = false;
                 }
             }
 
             return result;
         }
 
+        private static bool PropertyTypesAreStructurallyCompatible(IPropertySymbol messageProperty, IPropertySymbol messageContractProperty,
+            string path, ICollection<string> incompatibleProperties)
+        {
+            if (SymbolEqualityComparer.Default.Equals(messageProperty.Type, messageContractProperty.Type))
+            {
+                return true;
+            }
+
+            var result = AnonymousTypeAndInterfaceAreStructurallyCompatible(messageProperty, messageContractProperty, path, incompatibleProperties) ??
+                EnumerableTypesAreStructurallyCompatible(messageProperty, messageContractProperty, path, incompatibleProperties);
+            if (result.HasValue)
+            {
+                return result.Value;
+            }
+
+            incompatibleProperties.Add(path);
+            return false;
+        }
+
+        private static bool? AnonymousTypeAndInterfaceAreStructurallyCompatible(IPropertySymbol messageProperty, IPropertySymbol messageContractProperty,
+            string path, ICollection<string> incompatibleProperties)
+        {
+            if (messageProperty.Type.IsAnonymousType)
+            {
+                if (messageContractProperty.Type.TypeKind == TypeKind.Interface)
+                {
+                    if (!TypesAreStructurallyCompatible(messageProperty.Type, messageContractProperty.Type, path, incompatibleProperties))
+                    {
+                        return false;
+                    }
+                }
+                else
+                {
+                    incompatibleProperties.Add(path);
+                    return false;
+                }
+
+                return true;
+            }
+
+            return null;
+        }
+
+        private static bool? EnumerableTypesAreStructurallyCompatible(IPropertySymbol messageProperty, IPropertySymbol messageContractProperty,
+            string path, ICollection<string> incompatibleProperties)
+        {
+            if (messageProperty.Type.IsValidMessageEnumerable(out var messagePropertyTypeArgument))
+            {
+                if (messageContractProperty.Type.IsValidMessageContractEnumerable(out var messageContractPropertyTypeArgument))
+                {
+                    if (!EnumerableTypesAreStructurallyCompatible(messagePropertyTypeArgument, messageContractPropertyTypeArgument, path, incompatibleProperties))
+                    {
+                        return false;
+                    }
+                }
+                else
+                {
+                    incompatibleProperties.Add(path);
+                    return false;
+                }
+
+                return true;
+            }
+
+            return null;
+        }
+
+        private static bool EnumerableTypesAreStructurallyCompatible(ITypeSymbol messagePropertyTypeArgument, ITypeSymbol messageContractPropertyTypeArgument,
+            string path, ICollection<string> incompatibleProperties)
+        {
+            if (SymbolEqualityComparer.Default.Equals(messagePropertyTypeArgument, messageContractPropertyTypeArgument))
+            {
+                return true;
+            }
+
+            if (messagePropertyTypeArgument.IsAnonymousType &&
+                messageContractPropertyTypeArgument.TypeKind == TypeKind.Interface)
+            {
+                if (!TypesAreStructurallyCompatible(messagePropertyTypeArgument, messageContractPropertyTypeArgument,
+                    path, incompatibleProperties))
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                incompatibleProperties.Add(path);
+                return false;
+            }
+
+            return true;
+        }
+
         private static bool HasMissingProperties(ITypeSymbol messageType, ITypeSymbol messageContractType, string path, ICollection<string> missingProperties)
         {
             var messageContractProperties = messageContractType.GetMessageContractProperties();
             var messageProperties = messageType.GetMessageProperties();
-            var result = false;
 
+            var result = false;
             foreach (var messageContractProperty in messageContractProperties)
             {
                 var messageProperty = messageProperties.FirstOrDefault(m => m.Name == messageContractProperty.Name);
 
+                var propertyPath = Append(path, messageContractProperty.Name);
+
                 if (messageProperty == null)
                 {
-                    missingProperties.Add(Append(path, messageContractProperty.Name));
+                    missingProperties.Add(propertyPath);
                     result = true;
                 }
-                else if (messageContractProperty.Type.IsImmutableArray(out var messageContractPropertyTypeArgument) ||
-                    messageContractProperty.Type.IsReadOnlyList(out messageContractPropertyTypeArgument) ||
-                    messageContractProperty.Type.IsArray(out messageContractPropertyTypeArgument))
-                {
-                    if (messageProperty.Type.IsImmutableArray(out var messagePropertyTypeArgument) ||
-                        messageProperty.Type.IsReadOnlyList(out messagePropertyTypeArgument) ||
-                        messageProperty.Type.IsArray(out messagePropertyTypeArgument) ||
-                        messageProperty.Type.IsList(out messagePropertyTypeArgument))
-                    {
-                        if (messageContractPropertyTypeArgument.TypeKind == TypeKind.Interface &&
-                            messagePropertyTypeArgument.IsAnonymousType &&
-                            HasMissingProperties(messagePropertyTypeArgument, messageContractPropertyTypeArgument,
-                            Append(path, messageContractProperty.Name), missingProperties))
-                        {
-                            result = true;
-                        }
-                    }
-                }
-                else if (messageContractProperty.Type.TypeKind == TypeKind.Interface &&
-                    messageProperty.Type.IsAnonymousType &&
-                    HasMissingProperties(messageProperty.Type, messageContractProperty.Type,
-                    Append(path, messageContractProperty.Name), missingProperties))
+                else if (HasMissingProperties(messageProperty, messageContractProperty, propertyPath, missingProperties))
                 {
                     result = true;
                 }
             }
 
             return result;
+        }
+
+        private static bool HasMissingProperties(IPropertySymbol messageProperty, IPropertySymbol messageContractProperty, string path, ICollection<string> missingProperties)
+        {
+            var result = EnumerableTypeHasMissingProperties(messageProperty, messageContractProperty, path, missingProperties) ??
+                AnonymousTypeHasMissingProperties(messageProperty, messageContractProperty, path, missingProperties);
+
+            return result ?? false;
+        }
+
+        private static bool? EnumerableTypeHasMissingProperties(IPropertySymbol messageProperty, IPropertySymbol messageContractProperty,
+            string path, ICollection<string> missingProperties)
+        {
+            if (messageContractProperty.Type.IsValidMessageContractEnumerable(out var messageContractPropertyTypeArgument))
+            {
+                if (messageProperty.Type.IsValidMessageEnumerable(out var messagePropertyTypeArgument) &&
+                    messageContractPropertyTypeArgument.TypeKind == TypeKind.Interface &&
+                    messagePropertyTypeArgument.IsAnonymousType &&
+                    HasMissingProperties(messagePropertyTypeArgument, messageContractPropertyTypeArgument, path, missingProperties))
+                {
+                    return true;
+                }
+
+                return false;
+            }
+
+            return null;
+        }
+
+        private static bool? AnonymousTypeHasMissingProperties(IPropertySymbol messageProperty, IPropertySymbol messageContractProperty,
+            string path, ICollection<string> missingProperties)
+        {
+            if (messageContractProperty.Type.TypeKind == TypeKind.Interface)
+            {
+                if (messageProperty.Type.IsAnonymousType &&
+                    HasMissingProperties(messageProperty.Type, messageContractProperty.Type, path, missingProperties))
+                {
+                    return true;
+                }
+
+                return false;
+            }
+
+            return null;
         }
 
         private static string Append(string path, string propertyName)

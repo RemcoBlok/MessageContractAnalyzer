@@ -14,12 +14,12 @@ using Microsoft.CodeAnalysis.Simplification;
 
 namespace MessageContractAnalyzer
 {
-    [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(MessageContractAnalyzerCodeFixProvider)), Shared]
-    public class MessageContractAnalyzerCodeFixProvider : CodeFixProvider
+    [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(MessageContractCodeFixProvider)), Shared]
+    public class MessageContractCodeFixProvider : CodeFixProvider
     {
         private const string Title = "Add missing properties";
 
-        public sealed override ImmutableArray<string> FixableDiagnosticIds => ImmutableArray.Create(MessageContractAnalyzerAnalyzer.MissingPropertiesRuleId);
+        public sealed override ImmutableArray<string> FixableDiagnosticIds => ImmutableArray.Create(MessageContractDiagnosticAnalyzer.MissingPropertiesRuleId);
 
         public sealed override FixAllProvider GetFixAllProvider()
         {
@@ -31,7 +31,6 @@ namespace MessageContractAnalyzer
         {
             var root = await context.Document.GetSyntaxRootAsync(context.CancellationToken).ConfigureAwait(false);
 
-            // TODO: Replace the following code with your own analysis, generating a CodeAction for each fix to suggest
             var diagnostic = context.Diagnostics.First();
             var diagnosticSpan = diagnostic.Location.SourceSpan;
 
@@ -59,7 +58,7 @@ namespace MessageContractAnalyzer
             {
                 var dictionary = new Dictionary<AnonymousObjectCreationExpressionSyntax, ITypeSymbol>();
 
-                FindAnonymousTypesWithMessageContractsInTree(dictionary, anonymousObject, messageContractType);
+                FindAnonymousTypesWithMessageContractsInTree(anonymousObject, messageContractType, dictionary);
 
                 var newRoot = AddMissingProperties(root, dictionary);
 
@@ -71,8 +70,8 @@ namespace MessageContractAnalyzer
             return document;
         }
 
-        private static void FindAnonymousTypesWithMessageContractsInTree(IDictionary<AnonymousObjectCreationExpressionSyntax, ITypeSymbol> dictionary,
-            AnonymousObjectCreationExpressionSyntax anonymousObject, ITypeSymbol messageContractType)
+        private static void FindAnonymousTypesWithMessageContractsInTree(AnonymousObjectCreationExpressionSyntax anonymousObject,
+            ITypeSymbol messageContractType, IDictionary<AnonymousObjectCreationExpressionSyntax, ITypeSymbol> dictionary)
         {
             var messageContractProperties = messageContractType.GetMessageContractProperties();
 
@@ -84,30 +83,40 @@ namespace MessageContractAnalyzer
 
                 if (messageContractProperty != null)
                 {
-                    if (initializer.Expression is ImplicitArrayCreationExpressionSyntax implicitArrayCreationExpressionSyntax)
-                    {
-                        if (messageContractProperty.Type.IsImmutableArray(out var messageContractPropertyTypeArgument) ||
-                            messageContractProperty.Type.IsReadOnlyList(out messageContractPropertyTypeArgument) ||
-                            messageContractProperty.Type.IsArray(out messageContractPropertyTypeArgument))
-                        {
-                            var expressions = implicitArrayCreationExpressionSyntax.Initializer.Expressions;
-                            foreach (var expression in expressions)
-                            {
-                                if (expression is AnonymousObjectCreationExpressionSyntax anonymousObjectArrayInitializer)
-                                {
-                                    FindAnonymousTypesWithMessageContractsInTree(dictionary, anonymousObjectArrayInitializer, messageContractPropertyTypeArgument);
-                                }
-                            }
-                        }
-                    }
-                    else if (initializer.Expression is AnonymousObjectCreationExpressionSyntax anonymousObjectProperty)
-                    {
-                        FindAnonymousTypesWithMessageContractsInTree(dictionary, anonymousObjectProperty, messageContractProperty.Type);
-                    }
+                    FindAnonymousTypesWithMessageContractsInTree(initializer, messageContractProperty, dictionary);
                 }
             }
 
             dictionary.Add(anonymousObject, messageContractType);
+        }
+
+        private static void FindAnonymousTypesWithMessageContractsInTree(AnonymousObjectMemberDeclaratorSyntax initializer,
+            IPropertySymbol messageContractProperty, IDictionary<AnonymousObjectCreationExpressionSyntax, ITypeSymbol> dictionary)
+        {
+            if (initializer.Expression is ImplicitArrayCreationExpressionSyntax implicitArrayCreationExpressionSyntax)
+            {
+                if (messageContractProperty.Type.IsValidMessageContractEnumerable(out var messageContractPropertyTypeArgument))
+                {
+                    FindAnonymousTypesWithMessageContractsInTree(implicitArrayCreationExpressionSyntax, messageContractPropertyTypeArgument, dictionary);
+                }
+            }
+            else if (initializer.Expression is AnonymousObjectCreationExpressionSyntax anonymousObjectProperty)
+            {
+                FindAnonymousTypesWithMessageContractsInTree(anonymousObjectProperty, messageContractProperty.Type, dictionary);
+            }
+        }
+
+        private static void FindAnonymousTypesWithMessageContractsInTree(ImplicitArrayCreationExpressionSyntax implicitArrayCreationExpressionSyntax,
+            ITypeSymbol messageContractPropertyTypeArgument, IDictionary<AnonymousObjectCreationExpressionSyntax, ITypeSymbol> dictionary)
+        {
+            var expressions = implicitArrayCreationExpressionSyntax.Initializer.Expressions;
+            foreach (var expression in expressions)
+            {
+                if (expression is AnonymousObjectCreationExpressionSyntax anonymousObjectArrayInitializer)
+                {
+                    FindAnonymousTypesWithMessageContractsInTree(anonymousObjectArrayInitializer, messageContractPropertyTypeArgument, dictionary);
+                }
+            }
         }
 
         private static string GetName(AnonymousObjectMemberDeclaratorSyntax initializer)
@@ -125,7 +134,7 @@ namespace MessageContractAnalyzer
 
             return name;
         }
-        
+
         private static SyntaxNode AddMissingProperties(SyntaxNode root, IDictionary<AnonymousObjectCreationExpressionSyntax, ITypeSymbol> dictionary)
         {
             var newRoot = root.TrackNodes(dictionary.Keys);
@@ -188,9 +197,7 @@ namespace MessageContractAnalyzer
         private static AnonymousObjectMemberDeclaratorSyntax CreateProperty(IPropertySymbol messageContractProperty)
         {
             ExpressionSyntax expression;
-            if (messageContractProperty.Type.IsImmutableArray(out var messageContractPropertyTypeArgument) ||
-                messageContractProperty.Type.IsReadOnlyList(out messageContractPropertyTypeArgument) ||
-                messageContractProperty.Type.IsArray(out messageContractPropertyTypeArgument))
+            if (messageContractProperty.Type.IsValidMessageContractEnumerable(out var messageContractPropertyTypeArgument))
             {
                 expression = CreateImplicitArray(messageContractPropertyTypeArgument);
             }

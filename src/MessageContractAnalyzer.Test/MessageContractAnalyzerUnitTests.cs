@@ -3887,12 +3887,12 @@ namespace ConsoleApplication1
 
         protected override CodeFixProvider GetCSharpCodeFixProvider()
         {
-            return new MessageContractAnalyzerCodeFixProvider();
+            return new MessageContractCodeFixProvider();
         }
 
         protected override DiagnosticAnalyzer GetCSharpDiagnosticAnalyzer()
         {
-            return new MessageContractAnalyzerAnalyzer();
+            return new MessageContractDiagnosticAnalyzer();
         }
     }
 }
